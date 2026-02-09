@@ -5,9 +5,12 @@ import cn.nukkit.block.Block;
 import cn.nukkit.block.BlockID;
 import cn.nukkit.blockentity.BlockEntity;
 import cn.nukkit.blockentity.BlockEntityItemFrame;
+import cn.nukkit.command.Command;
+import cn.nukkit.command.CommandSender;
 import cn.nukkit.event.EventHandler;
 import cn.nukkit.event.Listener;
 import cn.nukkit.event.block.BlockPlaceEvent;
+import cn.nukkit.event.entity.EntityDamageByEntityEvent;
 import cn.nukkit.event.entity.EntityDamageEvent;
 import cn.nukkit.event.player.PlayerDropItemEvent;
 import cn.nukkit.event.player.PlayerInteractEvent;
@@ -102,7 +105,7 @@ public class AnarchyCore extends PluginBase implements Listener {
         }
 
         this.getServer().getPluginManager().registerEvents(this, this);
-        this.getLogger().info(TextFormat.GREEN + "Anarchy Core (tripu1404) activado. RTP Inteligente OK.");
+        this.getLogger().info(TextFormat.GREEN + "Anarchy Core (tripu1404) activado.");
     }
 
     private void loadIllegalIds() {
@@ -128,32 +131,72 @@ public class AnarchyCore extends PluginBase implements Listener {
     }
 
     // =========================================================
-    //                RANDOM SPAWN (RTP) - CORREGIDO
+    //                COMANDOS (GUARDA EN CONFIG)
+    // =========================================================
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (command.getName().equalsIgnoreCase("setrtpradius")) {
+            
+            // 1. Permisos
+            if (!sender.hasPermission("anarchy.admin")) {
+                sender.sendMessage(TextFormat.RED + "No tienes permiso para usar esto.");
+                return true;
+            }
+
+            // 2. Argumentos
+            if (args.length != 1) {
+                sender.sendMessage(TextFormat.RED + "Uso: /setrtpradius <radio>");
+                return true;
+            }
+
+            try {
+                int newRadius = Integer.parseInt(args[0]);
+                
+                if (newRadius < 100) {
+                    sender.sendMessage(TextFormat.RED + "El radio debe ser al menos 100 bloques.");
+                    return true;
+                }
+
+                // 3. Actualizar variable en memoria (para que funcione ya)
+                this.rtpRadius = newRadius;
+                
+                // 4. GUARDAR EN DISCO (config.yml)
+                this.getConfig().set("rtp-radius", newRadius);
+                this.saveConfig(); // <-- ESTA LÍNEA GUARDA EL ARCHIVO
+
+                sender.sendMessage(TextFormat.GREEN + "Radio RTP guardado y actualizado a: " + TextFormat.WHITE + newRadius + " bloques.");
+                
+            } catch (NumberFormatException e) {
+                sender.sendMessage(TextFormat.RED + "Por favor, introduce un número válido.");
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // =========================================================
+    //                RANDOM SPAWN (RTP INTELIGENTE)
     // =========================================================
 
     @EventHandler
     public void onRespawn(PlayerRespawnEvent event) {
         if (!rtpEnabled) return;
 
-        // 1. Verificar Dimensión
-        // Si el jugador está reapareciendo en el Nether (1) o End (2), NO hacemos RTP.
+        // Solo Overworld
         int dimension = event.getRespawnPosition().getLevel().getDimension();
-        if (dimension == Level.DIMENSION_NETHER || dimension == Level.DIMENSION_THE_END) {
+        if (dimension != Level.DIMENSION_OVERWORLD) {
             return; 
         }
 
-        // 2. Verificar Cama / Nexo de Reaparición
-        // Comparamos la posición de reaparición del evento con el Spawn por defecto del mundo.
-        // Si son DIFERENTES, significa que el jugador tiene una Cama o Nexo guardado.
+        // Respetar Cama / Nexo
         Position respawnPos = event.getRespawnPosition();
         Position worldSpawn = respawnPos.getLevel().getSpawnLocation();
 
-        // Usamos distanceSquared para comparar (si es mayor a 0.1, son sitios distintos)
         if (respawnPos.distanceSquared(worldSpawn) > 0.1) {
-            return; // Tiene cama, respetamos su spawn.
+            return; 
         }
 
-        // Si llegamos aquí, el jugador iba al Spawn del mundo. ¡Activamos RTP!
         Player player = event.getPlayer();
         Level level = this.getServer().getLevelByName(rtpWorld);
         
@@ -163,7 +206,6 @@ public class AnarchyCore extends PluginBase implements Listener {
         
         if (safePos != null) {
             event.setRespawnPosition(safePos);
-            // Mensaje con delay para asegurar que el cliente lo reciba
             this.getServer().getScheduler().scheduleDelayedTask(this, () -> {
                 if (player.isOnline()) {
                     player.sendTip(TextFormat.GREEN + "¡Respawn Aleatorio!");
@@ -176,22 +218,16 @@ public class AnarchyCore extends PluginBase implements Listener {
         for (int i = 0; i < 20; i++) {
             int x = random.nextInt(radius * 2) - radius;
             int z = random.nextInt(radius * 2) - radius;
-            
-            // +128 para empezar a buscar desde arriba hacia abajo si getHighestBlockAt falla en nether (aunque ya lo filtramos)
-            // En overworld getHighestBlockAt funciona bien.
             int y = level.getHighestBlockAt(x, z);
             
             Block ground = level.getBlock(x, y, z);
             
-            // Evitamos líquidos, fuego y cactus
             int id = ground.getId();
             if (id == BlockID.WATER || id == BlockID.STILL_WATER || 
                 id == BlockID.LAVA || id == BlockID.STILL_LAVA || 
                 id == BlockID.FIRE || id == BlockID.CACTUS) {
                 continue;
             }
-            
-            // Retornamos posición segura
             return new Position(x + 0.5, y + 1, z + 0.5, level);
         }
         return null;
@@ -208,13 +244,11 @@ public class AnarchyCore extends PluginBase implements Listener {
         if (player.isGliding()) {
             double distSq = event.getFrom().distanceSquared(event.getTo());
 
-            // Límite de Velocidad
             if (distSq > elytraSpeedLimitSq) {
                 event.setCancelled(true);
                 return;
             }
 
-            // HUD
             if (elytraHudEnabled) {
                 double dist = Math.sqrt(distSq);
                 double speedKmh = dist * 72.0;
@@ -275,11 +309,20 @@ public class AnarchyCore extends PluginBase implements Listener {
     }
 
     @EventHandler
+    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
+        if (event.getDamager() instanceof Player) {
+            Player player = (Player) event.getDamager();
+            if (cleanInventory(player)) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler
     public void onInteract(PlayerInteractEvent event) {
         Player player = event.getPlayer();
         Item itemInHand = event.getItem();
 
-        // Anti-Illegal
         if (antiIllegalEnabled && isItemIllegal(itemInHand)) {
             player.getInventory().setItemInHand(Item.get(0));
             event.setCancelled(true);
@@ -360,12 +403,17 @@ public class AnarchyCore extends PluginBase implements Listener {
         }
     }
 
-    private void cleanInventory(Player player) {
+    private boolean cleanInventory(Player player) {
+        boolean modified = false;
         PlayerInventory inv = player.getInventory();
         Map<Integer, Item> contents = inv.getContents();
         for (Map.Entry<Integer, Item> entry : contents.entrySet()) {
-            if (isItemIllegal(entry.getValue())) inv.setItem(entry.getKey(), Item.get(0));
+            if (isItemIllegal(entry.getValue())) {
+                inv.setItem(entry.getKey(), Item.get(0));
+                modified = true;
+            }
         }
+        return modified;
     }
 
     private boolean isItemIllegal(Item item) {
