@@ -8,7 +8,6 @@ import cn.nukkit.blockentity.BlockEntityItemFrame;
 import cn.nukkit.event.EventHandler;
 import cn.nukkit.event.Listener;
 import cn.nukkit.event.block.BlockPlaceEvent;
-import cn.nukkit.event.entity.EntityDamageByEntityEvent;
 import cn.nukkit.event.entity.EntityDamageEvent;
 import cn.nukkit.event.player.PlayerDropItemEvent;
 import cn.nukkit.event.player.PlayerInteractEvent;
@@ -16,11 +15,12 @@ import cn.nukkit.event.player.PlayerItemHeldEvent;
 import cn.nukkit.event.player.PlayerJoinEvent;
 import cn.nukkit.event.player.PlayerMoveEvent;
 import cn.nukkit.event.player.PlayerQuitEvent;
+import cn.nukkit.event.player.PlayerRespawnEvent;
 import cn.nukkit.event.player.PlayerToggleGlideEvent;
 import cn.nukkit.inventory.PlayerInventory;
 import cn.nukkit.item.Item;
-import cn.nukkit.item.enchantment.Enchantment;
-import cn.nukkit.math.AxisAlignedBB;
+import cn.nukkit.level.Level;
+import cn.nukkit.level.Position;
 import cn.nukkit.plugin.PluginBase;
 import cn.nukkit.utils.Config;
 import cn.nukkit.utils.TextFormat;
@@ -33,26 +33,32 @@ import java.util.Set;
 
 public class AnarchyCore extends PluginBase implements Listener {
 
-    // --- Configuración ---
+    // --- Configuración General ---
     private int frameDupeChance;
     private boolean bedDupeEnabled;
     private int bedDupeChance;
-    private boolean anti32kEnabled;
     private boolean antiIllegalEnabled;
-    private boolean antiBurrowEnabled;
     
-    // Anti-Elytra
+    // --- RTP (Random Spawn) ---
+    private boolean rtpEnabled;
+    private int rtpRadius;
+    private String rtpWorld;
+
+    // --- Elytra & HUD ---
     private boolean antiElytraEnabled;
     private double antiElytraTpsLimit;
     private boolean safeFallEnabled;
-    private double elytraSpeedLimitSq; 
+    private double elytraSpeedLimit;     
+    private double elytraSpeedLimitSq;   
+    private double elytraMaxKmh;         
+    private boolean elytraHudEnabled;
 
-    // Mensajes
+    // --- Mensajes ---
     private boolean customMessagesEnabled;
     private List<String> joinMessages;
     private List<String> quitMessages;
 
-    // Estructuras de datos
+    // --- Estructuras ---
     private final Random random = new Random();
     private final Set<Integer> illegalIds = new HashSet<>();
     private final Set<String> safeFallPlayers = new HashSet<>(); 
@@ -62,37 +68,41 @@ public class AnarchyCore extends PluginBase implements Listener {
         this.saveDefaultConfig();
         Config config = this.getConfig();
 
-        // 1. Cargar Variables
+        // 1. Cargar Dupes y Anti-Illegal
         this.frameDupeChance = config.getInt("frame-dupe-chance", 40);
         this.bedDupeEnabled = config.getBoolean("bed-dupe-enabled", true);
         this.bedDupeChance = config.getInt("bed-dupe-chance", 50);
-        this.anti32kEnabled = config.getBoolean("anti-32k-enabled", true);
         this.antiIllegalEnabled = config.getBoolean("anti-illegal-enabled", true);
-        this.antiBurrowEnabled = config.getBoolean("anti-burrow-enabled", true);
-        
+
+        // 2. Cargar RTP
+        this.rtpEnabled = config.getBoolean("rtp-enabled", true);
+        this.rtpRadius = config.getInt("rtp-radius", 1000);
+        this.rtpWorld = config.getString("rtp-world", "world");
+
+        // 3. Cargar Elytra
         this.antiElytraEnabled = config.getBoolean("anti-elytra-enabled", true);
         this.antiElytraTpsLimit = config.getDouble("anti-elytra-tps-limit", 15.0);
         this.safeFallEnabled = config.getBoolean("anti-elytra-safe-fall", true);
+        this.elytraHudEnabled = config.getBoolean("elytra-hud-enabled", true);
         
-        double speedLimit = config.getDouble("elytra-speed-limit", 3.5);
-        this.elytraSpeedLimitSq = speedLimit * speedLimit; 
+        this.elytraSpeedLimit = config.getDouble("elytra-speed-limit", 3.5);
+        this.elytraSpeedLimitSq = elytraSpeedLimit * elytraSpeedLimit;
+        this.elytraMaxKmh = elytraSpeedLimit * 72.0; 
 
+        // 4. Mensajes y limpieza
         this.customMessagesEnabled = config.getBoolean("custom-messages-enabled", true);
         this.joinMessages = config.getStringList("join-messages");
         this.quitMessages = config.getStringList("quit-messages");
 
-        // 2. Cargar IDs Ilegales
-        if (antiIllegalEnabled) {
-            loadIllegalIds();
-        }
+        if (antiIllegalEnabled) loadIllegalIds();
 
-        // 3. Tarea Anti-Elytra 
+        // Tarea Anti-Lag Elytra
         if (antiElytraEnabled) {
             this.getServer().getScheduler().scheduleRepeatingTask(this, this::checkElytraLag, 40);
         }
 
         this.getServer().getPluginManager().registerEvents(this, this);
-        this.getLogger().info(TextFormat.GREEN + "Anarchy Core (tripu1404) activado correctamente.");
+        this.getLogger().info(TextFormat.GREEN + "Anarchy Core (tripu1404) activado. RTP Inteligente OK.");
     }
 
     private void loadIllegalIds() {
@@ -106,10 +116,7 @@ public class AnarchyCore extends PluginBase implements Listener {
         illegalIds.add(BlockID.MONSTER_SPAWNER);
         illegalIds.add(BlockID.INVISIBLE_BEDROCK);
         illegalIds.add(BlockID.BARRIER);
-        
-        // CORREGIDO: Usamos el ID 90 directamente en lugar de BlockID.PORTAL
-        illegalIds.add(90); // Nether Portal Block
-        
+        illegalIds.add(90); // Portal
         illegalIds.add(BlockID.END_PORTAL);
         illegalIds.add(BlockID.END_PORTAL_FRAME);
         illegalIds.add(BlockID.COMMAND_BLOCK);
@@ -118,77 +125,113 @@ public class AnarchyCore extends PluginBase implements Listener {
         illegalIds.add(BlockID.ALLOW);
         illegalIds.add(BlockID.DENY);
         illegalIds.add(BlockID.BORDER_BLOCK);
-        illegalIds.add(665); 
-        illegalIds.add(-60); 
     }
 
     // =========================================================
-    //                EVENTOS DE JUGADOR (Join/Quit)
+    //                RANDOM SPAWN (RTP) - CORREGIDO
     // =========================================================
 
     @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
+    public void onRespawn(PlayerRespawnEvent event) {
+        if (!rtpEnabled) return;
+
+        // 1. Verificar Dimensión
+        // Si el jugador está reapareciendo en el Nether (1) o End (2), NO hacemos RTP.
+        int dimension = event.getRespawnPosition().getLevel().getDimension();
+        if (dimension == Level.DIMENSION_NETHER || dimension == Level.DIMENSION_THE_END) {
+            return; 
+        }
+
+        // 2. Verificar Cama / Nexo de Reaparición
+        // Comparamos la posición de reaparición del evento con el Spawn por defecto del mundo.
+        // Si son DIFERENTES, significa que el jugador tiene una Cama o Nexo guardado.
+        Position respawnPos = event.getRespawnPosition();
+        Position worldSpawn = respawnPos.getLevel().getSpawnLocation();
+
+        // Usamos distanceSquared para comparar (si es mayor a 0.1, son sitios distintos)
+        if (respawnPos.distanceSquared(worldSpawn) > 0.1) {
+            return; // Tiene cama, respetamos su spawn.
+        }
+
+        // Si llegamos aquí, el jugador iba al Spawn del mundo. ¡Activamos RTP!
         Player player = event.getPlayer();
+        Level level = this.getServer().getLevelByName(rtpWorld);
+        
+        if (level == null) return;
 
-        if (antiIllegalEnabled || anti32kEnabled) {
-            cleanInventory(player);
-        }
-
-        if (customMessagesEnabled && !joinMessages.isEmpty()) {
-            String msg = joinMessages.get(random.nextInt(joinMessages.size()));
-            event.setJoinMessage(TextFormat.colorize(msg.replace("{player}", player.getName())));
+        Position safePos = findSafePosition(level, rtpRadius);
+        
+        if (safePos != null) {
+            event.setRespawnPosition(safePos);
+            // Mensaje con delay para asegurar que el cliente lo reciba
+            this.getServer().getScheduler().scheduleDelayedTask(this, () -> {
+                if (player.isOnline()) {
+                    player.sendTip(TextFormat.GREEN + "¡Respawn Aleatorio!");
+                }
+            }, 10);
         }
     }
 
-    @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
-        safeFallPlayers.remove(event.getPlayer().getName());
-
-        if (customMessagesEnabled && !quitMessages.isEmpty()) {
-            String msg = quitMessages.get(random.nextInt(quitMessages.size()));
-            event.setQuitMessage(TextFormat.colorize(msg.replace("{player}", event.getPlayer().getName())));
+    private Position findSafePosition(Level level, int radius) {
+        for (int i = 0; i < 20; i++) {
+            int x = random.nextInt(radius * 2) - radius;
+            int z = random.nextInt(radius * 2) - radius;
+            
+            // +128 para empezar a buscar desde arriba hacia abajo si getHighestBlockAt falla en nether (aunque ya lo filtramos)
+            // En overworld getHighestBlockAt funciona bien.
+            int y = level.getHighestBlockAt(x, z);
+            
+            Block ground = level.getBlock(x, y, z);
+            
+            // Evitamos líquidos, fuego y cactus
+            int id = ground.getId();
+            if (id == BlockID.WATER || id == BlockID.STILL_WATER || 
+                id == BlockID.LAVA || id == BlockID.STILL_LAVA || 
+                id == BlockID.FIRE || id == BlockID.CACTUS) {
+                continue;
+            }
+            
+            // Retornamos posición segura
+            return new Position(x + 0.5, y + 1, z + 0.5, level);
         }
+        return null;
     }
 
     // =========================================================
-    //                MOVIMIENTO (Burrow & Elytra Speed)
+    //                MOVIMIENTO Y HUD ELYTRA
     // =========================================================
 
     @EventHandler
     public void onMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
-        boolean sameBlock = event.getFrom().getFloorX() == event.getTo().getFloorX() && 
-                            event.getFrom().getFloorY() == event.getTo().getFloorY() && 
-                            event.getFrom().getFloorZ() == event.getTo().getFloorZ();
-
+        
         if (player.isGliding()) {
-            if (event.getFrom().distanceSquared(event.getTo()) > elytraSpeedLimitSq) {
-                event.setCancelled(true); 
+            double distSq = event.getFrom().distanceSquared(event.getTo());
+
+            // Límite de Velocidad
+            if (distSq > elytraSpeedLimitSq) {
+                event.setCancelled(true);
                 return;
             }
-        }
 
-        if (antiBurrowEnabled && !sameBlock) {
-            Block block = player.getLevel().getBlock(player.getPosition());
-            
-            if (block.getId() == BlockID.ENDER_CHEST) {
-                AxisAlignedBB playerBB = player.getBoundingBox();
-                AxisAlignedBB blockBB = block.getBoundingBox();
+            // HUD
+            if (elytraHudEnabled) {
+                double dist = Math.sqrt(distSq);
+                double speedKmh = dist * 72.0;
 
-                if (blockBB != null) {
-                    blockBB.contract(0.1, 0.1, 0.1); 
+                String color;
+                if (speedKmh < elytraMaxKmh * 0.5) color = "&a"; 
+                else if (speedKmh < elytraMaxKmh * 0.8) color = "&e"; 
+                else color = "&c"; 
 
-                    if (blockBB.intersectsWith(playerBB)) {
-                        player.attack(new EntityDamageEvent(player, EntityDamageEvent.DamageCause.SUFFOCATION, 2));
-                        player.teleport(player.getPosition().add(0, 1.5, 0));
-                    }
-                }
+                String hud = TextFormat.colorize("&bVelocidad: " + color + String.format("%.0f", speedKmh) + " &fkm/h &7/ &c" + String.format("%.0f", elytraMaxKmh) + " &7km/h");
+                player.sendTip(hud);
             }
         }
     }
 
     // =========================================================
-    //                ANTI-ELYTRA (TPS & Safe Fall)
+    //                ANTI-ELYTRA (Lag & Safe Fall)
     // =========================================================
 
     private void checkElytraLag() {
@@ -198,10 +241,8 @@ public class AnarchyCore extends PluginBase implements Listener {
         for (Player player : this.getServer().getOnlinePlayers().values()) {
             if (player.isGliding()) {
                 player.setGliding(false);
-                player.sendMessage(TextFormat.RED + "⚠ Elytras desactivadas por lag del servidor.");
-                if (safeFallEnabled) {
-                    safeFallPlayers.add(player.getName());
-                }
+                player.sendMessage(TextFormat.RED + "⚠ Elytras desactivadas por lag.");
+                if (safeFallEnabled) safeFallPlayers.add(player.getName());
             }
         }
     }
@@ -213,13 +254,13 @@ public class AnarchyCore extends PluginBase implements Listener {
             double currentTps = this.getServer().getTicksPerSecond();
             if (currentTps < antiElytraTpsLimit) {
                 event.setCancelled(true);
-                event.getPlayer().sendPopup(TextFormat.RED + "Vuelo bloqueado (TPS Bajo: " + String.format("%.1f", currentTps) + ")");
+                event.getPlayer().sendPopup(TextFormat.RED + "Vuelo bloqueado por bajo TPS.");
             }
         }
     }
 
     // =========================================================
-    //                INTERACCIONES Y DAÑO (Dupes + Anti32k)
+    //                INTERACCIONES & CLEANUP
     // =========================================================
 
     @EventHandler
@@ -227,19 +268,8 @@ public class AnarchyCore extends PluginBase implements Listener {
         if (event.getEntity() instanceof Player && event.getCause() == EntityDamageEvent.DamageCause.FALL) {
             Player player = (Player) event.getEntity();
             if (safeFallPlayers.contains(player.getName())) {
-                event.setCancelled(true); 
-                safeFallPlayers.remove(player.getName()); 
-            }
-        }
-    }
-
-    @EventHandler
-    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
-        // Anti-32k para PvP
-        if (event.getDamager() instanceof Player) {
-            Player player = (Player) event.getDamager();
-            if (cleanInventory(player)) {
                 event.setCancelled(true);
+                safeFallPlayers.remove(player.getName());
             }
         }
     }
@@ -249,29 +279,23 @@ public class AnarchyCore extends PluginBase implements Listener {
         Player player = event.getPlayer();
         Item itemInHand = event.getItem();
 
-        // 1. Anti-32k / Anti-Illegal (Limpieza previa)
-        Item validated = validateItem(itemInHand);
-        if (!itemInHand.equals(validated)) {
-            player.getInventory().setItemInHand(validated);
+        // Anti-Illegal
+        if (antiIllegalEnabled && isItemIllegal(itemInHand)) {
+            player.getInventory().setItemInHand(Item.get(0));
             event.setCancelled(true);
-            return; 
+            return;
         }
 
-        // 2. FRAME DUPE (Bloque Item Frame)
-        // Detectamos CLICK IZQUIERDO (Golpear/Romper) en un Bloque Item Frame
+        // Frame Dupe
         if (event.getAction() == PlayerInteractEvent.Action.LEFT_CLICK_BLOCK) {
             Block block = event.getBlock();
-            // CORREGIDO: Usamos ID 199 directamente (Item Frame Block) para evitar errores de constantes faltantes.
             if (block.getId() == 199) { 
                 BlockEntity tile = block.getLevel().getBlockEntity(block);
                 if (tile instanceof BlockEntityItemFrame) {
                     BlockEntityItemFrame frame = (BlockEntityItemFrame) tile;
                     Item itemInFrame = frame.getItem();
-                    
                     if (itemInFrame != null && itemInFrame.getId() != 0) {
-                        // Probabilidad
                         if ((random.nextInt(100) + 1) <= frameDupeChance) {
-                            // Soltamos el duplicado
                             block.getLevel().dropItem(block.add(0.5, 0.5, 0.5), itemInFrame.clone());
                         }
                     }
@@ -279,7 +303,7 @@ public class AnarchyCore extends PluginBase implements Listener {
             }
         }
 
-        // 3. BED DUPE (Click Derecho en Cama)
+        // Bed Dupe
         if (bedDupeEnabled && event.getAction() == PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK) {
             if (event.getBlock().getId() == BlockID.BED_BLOCK) {
                 if (itemInHand.getId() != 0) {
@@ -291,102 +315,61 @@ public class AnarchyCore extends PluginBase implements Listener {
         }
     }
 
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        if (antiIllegalEnabled) cleanInventory(event.getPlayer());
+        if (customMessagesEnabled && !joinMessages.isEmpty()) {
+            String msg = joinMessages.get(random.nextInt(joinMessages.size()));
+            event.setJoinMessage(TextFormat.colorize(msg.replace("{player}", event.getPlayer().getName())));
+        }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        safeFallPlayers.remove(event.getPlayer().getName());
+        if (customMessagesEnabled && !quitMessages.isEmpty()) {
+            String msg = quitMessages.get(random.nextInt(quitMessages.size()));
+            event.setQuitMessage(TextFormat.colorize(msg.replace("{player}", event.getPlayer().getName())));
+        }
+    }
+
     // =========================================================
-    //                INVENTARIO Y LIMPIEZA
+    //                UTILIDADES
     // =========================================================
 
     @EventHandler
     public void onItemHeld(PlayerItemHeldEvent event) {
-        if (!antiIllegalEnabled && !anti32kEnabled) return;
-        Item item = event.getItem();
-        Item validated = validateItem(item);
-        
-        if (!item.equals(validated)) {
-            event.getPlayer().getInventory().setItem(event.getSlot(), validated);
+        if (antiIllegalEnabled && isItemIllegal(event.getItem())) {
+            event.getPlayer().getInventory().setItem(event.getSlot(), Item.get(0));
         }
     }
 
     @EventHandler
     public void onDrop(PlayerDropItemEvent event) {
-        if (!antiIllegalEnabled && !anti32kEnabled) return;
-        Item item = event.getItem();
-        Item validated = validateItem(item);
-        
-        if (!item.equals(validated)) {
-            event.setCancelled(true); 
-            event.getPlayer().getInventory().remove(item); 
-            
-            if (validated.getId() != 0) {
-                 event.getPlayer().dropItem(validated);
-            }
+        if (antiIllegalEnabled && isItemIllegal(event.getItem())) {
+            event.setCancelled(true);
+            event.getPlayer().getInventory().remove(event.getItem());
         }
     }
 
     @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
-        if (!antiIllegalEnabled) return;
-        if (isItemIllegal(event.getItem())) {
+        if (antiIllegalEnabled && isItemIllegal(event.getItem())) {
             event.setCancelled(true);
             event.getPlayer().getInventory().setItemInHand(Item.get(0));
-            event.getPlayer().sendPopup(TextFormat.RED + "¡Bloque Ilegal!");
         }
     }
 
-    // =========================================================
-    //                MÉTODOS AUXILIARES
-    // =========================================================
-
-    private boolean cleanInventory(Player player) {
-        boolean modified = false;
+    private void cleanInventory(Player player) {
         PlayerInventory inv = player.getInventory();
-        
         Map<Integer, Item> contents = inv.getContents();
         for (Map.Entry<Integer, Item> entry : contents.entrySet()) {
-            Item original = entry.getValue();
-            Item validated = validateItem(original);
-            if (!original.equals(validated)) {
-                inv.setItem(entry.getKey(), validated);
-                modified = true;
-            }
+            if (isItemIllegal(entry.getValue())) inv.setItem(entry.getKey(), Item.get(0));
         }
-        
-        Item[] armor = inv.getArmorContents();
-        for (int i = 0; i < armor.length; i++) {
-            Item original = armor[i];
-            Item validated = validateItem(original);
-            if (!original.equals(validated)) {
-                inv.setArmorItem(i, validated);
-                modified = true;
-            }
-        }
-        return modified;
-    }
-
-    private Item validateItem(Item item) {
-        if (item == null || item.getId() == 0) return item;
-
-        if (antiIllegalEnabled && isItemIllegal(item)) {
-            return Item.get(0); 
-        }
-
-        if (anti32kEnabled && item.hasEnchantments()) {
-            boolean enchantsChanged = false;
-            Item clonedItem = item.clone();
-            
-            for (Enchantment enchantment : clonedItem.getEnchantments()) {
-                int maxLevel = enchantment.getMaxLevel();
-                if (enchantment.getLevel() > maxLevel) {
-                    enchantment.setLevel(maxLevel, true);
-                    clonedItem.addEnchantment(enchantment);
-                    enchantsChanged = true;
-                }
-            }
-            if (enchantsChanged) return clonedItem;
-        }
-        return item;
     }
 
     private boolean isItemIllegal(Item item) {
+        if (item == null || item.getId() == 0) return false;
         if (illegalIds.contains(item.getId())) return true;
         String name = item.getName().toLowerCase();
         return name.contains("reinforced deepslate") || name.contains("soul fire");
