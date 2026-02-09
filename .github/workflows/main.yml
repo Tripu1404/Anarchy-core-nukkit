@@ -1,0 +1,63 @@
+name: Compilar AnarchyCore (Sin Maven)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Descargar tu código
+    - name: Chequear código
+      uses: actions/checkout@v4
+
+    # 2. Instalar Java (Usamos Java 17 que es estándar hoy en día, o puedes cambiarlo a 8)
+    - name: Configurar Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    # 3. Descargar Nukkit (Necesario para que el plugin entienda qué es "Player", "Event", etc.)
+    - name: Descargar Dependencia (Nukkit)
+      run: |
+        mkdir libs
+        echo "Descargando la última versión de Nukkit..."
+        # Usamos el enlace directo al último build exitoso de Cloudburst (NukkitX)
+        wget -O libs/nukkit.jar https://github.com/PetteriM1/NukkitPetteriM1Edition/releases/download/4299/Nukkit-PM1E.jar
+
+    # 4. Compilar el código (.java -> .class)
+    - name: Compilar Código Java
+      run: |
+        mkdir bin
+        echo "Compilando fuentes..."
+        # El comando 'find' busca todos los archivos .java dentro de src y los compila
+        # -cp libs/nukkit.jar le dice dónde buscar las clases de Nukkit
+        # -d bin le dice dónde guardar los archivos compilados
+        javac -d bin -cp libs/nukkit.jar -sourcepath src/main/java $(find src/main/java -name "*.java")
+
+    # 5. Copiar los recursos (plugin.yml y config.yml)
+    - name: Copiar Recursos
+      run: |
+        echo "Copiando plugin.yml y config..."
+        cp src/main/resources/plugin.yml bin/
+        # Copiamos config.yml si existe (el || true evita error si no lo has subido aún)
+        cp src/main/resources/config.yml bin/ || true
+
+    # 6. Empaquetar todo en un .jar
+    - name: Crear archivo .JAR
+      run: |
+        echo "Creando AnarchyCore.jar..."
+        # 'cvf' crea el jar, '-C bin .' entra a la carpeta bin e incluye todo manteniendo la estructura
+        jar cvf AnarchyCore.jar -C bin .
+
+    # 7. Subir el resultado para que lo puedas descargar
+    - name: Subir Artefacto (Plugin Compilado)
+      uses: actions/upload-artifact@v4
+      with:
+        name: AnarchyCore-Plugin
+        path: AnarchyCore.jar
