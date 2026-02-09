@@ -1,0 +1,52 @@
+# ----------------------------------------------------------------
+#                ANARCHY CORE - CONFIGURATION
+#                     Author: tripu1404
+# ----------------------------------------------------------------
+
+# --- Frame Dupe ---
+# Probabilidad de duplicar al golpear un Item Frame (0 - 100)
+frame-dupe-chance: 40
+
+# --- Bed Dupe ---
+# Activar o desactivar la duplicación en camas
+bed-dupe-enabled: true
+# Probabilidad de duplicar al hacer click en una cama (0 - 100)
+bed-dupe-chance: 50
+
+# --- Anti-32k (Enchants) ---
+# Revierte encantamientos ilegales al nivel máximo vanilla.
+# Se revisa al entrar, al cambiar de mano, al interactuar y al atacar.
+anti-32k-enabled: true
+
+# --- Anti-Illegal (Blocks) ---
+# Borra items ilegales (Bedrock, Barriers, Spawners, etc.) del inventario.
+# Se borran al entrar, al intentar colocarlos, al tirarlos o usarlos.
+anti-illegal-enabled: true
+
+# --- Anti-Burrow (Ender Chest) ---
+anti-burow-enabled: true
+
+# --- Anti-Elytra (TPS Lag Protection) ---
+anti-elytra-enabled: true
+# Límite de TPS. Si baja de esto, nadie puede volar.
+anti-elytra-tps-limit: 15.0
+# Evita daño por caída si el plugin te quitó las elytras en el aire.
+anti-elytra-safe-fall: true
+
+# --- Elytra Speed Limit ---
+elytra-speed-limit: 3.5
+
+# --- Custom Messages ---
+custom-messages-enabled: true
+
+join-messages:
+  - "&7[&a+&7] &f{player} ha entrado al caos."
+  - "&7[&a+&7] &f¡Cuidado! {player} acaba de llegar."
+  - "&7[&a+&7] &f{player} se ha conectado a la anarquía."
+  - "&7[&a+&7] &fUn wild {player} ha aparecido."
+
+quit-messages:
+  - "&7[&c-&7] &f{player} no aguantó la presión."
+  - "&7[&c-&7] &f{player} se ha desconectado."
+  - "&7[&c-&7] &f{player} huyó del servidor."
+  - "&7[&c-&7] &fAdiós, {player}."
