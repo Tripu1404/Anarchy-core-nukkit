@@ -9,6 +9,7 @@ import cn.nukkit.event.entity.EntityDamageByEntityEvent;
 import cn.nukkit.event.entity.EntityDamageEvent;
 import cn.nukkit.event.entity.EntityDamageEvent.DamageCause;
 import cn.nukkit.event.player.PlayerDeathEvent;
+import cn.nukkit.item.Item; // <--- ESTA ERA LA IMPORTACIÓN FALTANTE
 import cn.nukkit.plugin.Plugin;
 import cn.nukkit.utils.Config;
 import cn.nukkit.utils.TextFormat;
@@ -28,6 +29,7 @@ public class DeathListener implements Listener {
 
     public DeathListener(Plugin plugin) {
         this.plugin = plugin;
+        // Cargar los 4 archivos de configuración
         for (int i = 1; i <= 4; i++) {
             String fileName = "deathmsg_" + i + ".yml";
             plugin.saveResource(fileName); 
@@ -49,6 +51,8 @@ public class DeathListener implements Listener {
     public void onDeath(PlayerDeathEvent event) {
         Player victim = event.getEntity();
         String victimName = victim.getName();
+        
+        // Seleccionar aleatoriamente una de las 4 configs
         Config selectedConfig = deathConfigs.get(random.nextInt(deathConfigs.size()));
 
         EntityDamageEvent lastCause = victim.getLastDamageCause();
