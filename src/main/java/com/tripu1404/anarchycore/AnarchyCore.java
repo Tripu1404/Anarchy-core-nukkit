@@ -104,8 +104,13 @@ public class AnarchyCore extends PluginBase implements Listener {
             this.getServer().getScheduler().scheduleRepeatingTask(this, this::checkElytraLag, 40);
         }
 
+        // REGISTRAR EVENTOS
         this.getServer().getPluginManager().registerEvents(this, this);
-        this.getLogger().info(TextFormat.GREEN + "Anarchy Core (tripu1404) activado.");
+        
+        // --- NUEVO: REGISTRAR MENSAJES DE MUERTE PERSONALIZADOS ---
+        this.getServer().getPluginManager().registerEvents(new DeathListener(this), this);
+
+        this.getLogger().info(TextFormat.GREEN + "Anarchy Core (tripu1404) activado con Death Messages.");
     }
 
     private void loadIllegalIds() {
@@ -137,14 +142,11 @@ public class AnarchyCore extends PluginBase implements Listener {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (command.getName().equalsIgnoreCase("setrtpradius")) {
-            
-            // 1. Permisos
             if (!sender.hasPermission("anarchy.admin")) {
                 sender.sendMessage(TextFormat.RED + "No tienes permiso para usar esto.");
                 return true;
             }
 
-            // 2. Argumentos
             if (args.length != 1) {
                 sender.sendMessage(TextFormat.RED + "Uso: /setrtpradius <radio>");
                 return true;
@@ -152,21 +154,14 @@ public class AnarchyCore extends PluginBase implements Listener {
 
             try {
                 int newRadius = Integer.parseInt(args[0]);
-                
                 if (newRadius < 100) {
                     sender.sendMessage(TextFormat.RED + "El radio debe ser al menos 100 bloques.");
                     return true;
                 }
-
-                // 3. Actualizar variable en memoria (para que funcione ya)
                 this.rtpRadius = newRadius;
-                
-                // 4. GUARDAR EN DISCO (config.yml)
                 this.getConfig().set("rtp-radius", newRadius);
-                this.saveConfig(); // <-- ESTA LÍNEA GUARDA EL ARCHIVO
-
-                sender.sendMessage(TextFormat.GREEN + "Radio RTP guardado y actualizado a: " + TextFormat.WHITE + newRadius + " bloques.");
-                
+                this.saveConfig();
+                sender.sendMessage(TextFormat.GREEN + "Radio RTP actualizado a: " + TextFormat.WHITE + newRadius + " bloques.");
             } catch (NumberFormatException e) {
                 sender.sendMessage(TextFormat.RED + "Por favor, introduce un número válido.");
             }
@@ -183,19 +178,13 @@ public class AnarchyCore extends PluginBase implements Listener {
     public void onRespawn(PlayerRespawnEvent event) {
         if (!rtpEnabled) return;
 
-        // Solo Overworld
         int dimension = event.getRespawnPosition().getLevel().getDimension();
-        if (dimension != Level.DIMENSION_OVERWORLD) {
-            return; 
-        }
+        if (dimension != Level.DIMENSION_OVERWORLD) return; 
 
-        // Respetar Cama / Nexo
         Position respawnPos = event.getRespawnPosition();
         Position worldSpawn = respawnPos.getLevel().getSpawnLocation();
 
-        if (respawnPos.distanceSquared(worldSpawn) > 0.1) {
-            return; 
-        }
+        if (respawnPos.distanceSquared(worldSpawn) > 0.1) return; 
 
         Player player = event.getPlayer();
         Level level = this.getServer().getLevelByName(rtpWorld);
