@@ -7,7 +7,7 @@ DROWNING: "§b<Player> §3se quedó sin aire"
 DROWNING_BY_PLAYER: "§b<Player> §3se ahogó peleando con §b<Attacker>"
 SUFFOCATION: "§b<Player> §3se asfixió"
 VOID: "§b<Player> §3cayó fuera del mundo"
-SUICIDE: "§b<Player> §3se quitó la vida"
+SUICIDE: "§b<Player> §3se quitó la vida" #ex
 BLOCK_EXPLOSION: "§b<Player> §3murió por explosión"
 BLOCK_EXPLOSION_BY_PLAYER: "§b<Player> §3murió por TNT de §b<Attacker>"
 ENTITY_EXPLOSION: "§b<Player> §3explotó"
