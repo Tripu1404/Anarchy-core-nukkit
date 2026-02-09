@@ -3,160 +3,133 @@ package com.tripu1404.anarchycore;
 import cn.nukkit.Player;
 import cn.nukkit.entity.Entity;
 import cn.nukkit.entity.item.EntityEndCrystal;
-import cn.nukkit.entity.item.EntityPrimedTNT;
-import cn.nukkit.entity.mob.EntityCreeper;
 import cn.nukkit.event.EventHandler;
 import cn.nukkit.event.Listener;
 import cn.nukkit.event.entity.EntityDamageByEntityEvent;
 import cn.nukkit.event.entity.EntityDamageEvent;
+import cn.nukkit.event.entity.EntityDamageEvent.DamageCause;
 import cn.nukkit.event.player.PlayerDeathEvent;
+import cn.nukkit.plugin.Plugin;
 import cn.nukkit.utils.Config;
 import cn.nukkit.utils.TextFormat;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class DeathListener implements Listener {
-
-    private final AnarchyCore plugin;
-    private Config messagesConfig;
-    private final Random random = new Random();
     
-    // Almacena quién golpeó a quién por última vez (para muertes indirectas)
-    private final Map<String, String> lastAttacker = new HashMap<>();
-    private final Map<String, Long> lastAttackTime = new HashMap<>();
+    private final Plugin plugin;
+    private final List<Config> deathConfigs = new ArrayList<>();
+    private final Map<String, Entity> lastDamager = new ConcurrentHashMap<>();
+    private final Random random = new Random();
 
-    public DeathListener(AnarchyCore plugin) {
+    public DeathListener(Plugin plugin) {
         this.plugin = plugin;
-        // Cargamos el archivo death_messages.yml
-        plugin.saveResource("death_messages.yml");
-        this.messagesConfig = new Config(plugin.getDataFolder() + "/death_messages.yml", Config.YAML);
+        for (int i = 1; i <= 4; i++) {
+            String fileName = "deathmsg_" + i + ".yml";
+            plugin.saveResource(fileName); 
+            deathConfigs.add(new Config(plugin.getDataFolder() + "/" + fileName, Config.YAML));
+        }
     }
 
-    // Rastreador de daño para PvP y Cristales
     @EventHandler
-    public void onDamage(EntityDamageEvent event) {
+    public void onEntityDamage(EntityDamageEvent event) {
         if (event instanceof EntityDamageByEntityEvent) {
             EntityDamageByEntityEvent ev = (EntityDamageByEntityEvent) event;
-            if (ev.getEntity() instanceof Player && ev.getDamager() instanceof Player) {
-                Player victim = (Player) ev.getEntity();
-                Player attacker = (Player) ev.getDamager();
-                
-                lastAttacker.put(victim.getName(), attacker.getName());
-                lastAttackTime.put(victim.getName(), System.currentTimeMillis());
+            if (ev.getEntity() instanceof Player) {
+                lastDamager.put(ev.getEntity().getName(), ev.getDamager());
             }
         }
     }
 
     @EventHandler
     public void onDeath(PlayerDeathEvent event) {
-        Player player = event.getEntity();
-        EntityDamageEvent cause = player.getLastDamageCause();
-        String msgKey = "unknown";
-        String killerName = "";
-        String itemName = "";
+        Player victim = event.getEntity();
+        String victimName = victim.getName();
+        Config selectedConfig = deathConfigs.get(random.nextInt(deathConfigs.size()));
 
-        // Detectar causa de muerte
+        EntityDamageEvent lastCause = victim.getLastDamageCause();
+        DamageCause cause = (lastCause != null) ? lastCause.getCause() : null;
+
+        Entity damager = null;
+        if (lastCause instanceof EntityDamageByEntityEvent) {
+            damager = ((EntityDamageByEntityEvent) lastCause).getDamager();
+        }
+        if (damager == null) damager = lastDamager.get(victimName);
+
+        String attackerName = (damager != null) ? damager.getName() : null;
+        String weaponName = "Hand";
+
+        if (damager instanceof Player) {
+            Item i = ((Player) damager).getInventory().getItemInHand();
+            if (i != null && i.getId() != 0) weaponName = i.getName();
+        }
+
+        String message = selectedConfig.getString("CUSTOM", "<Player> died");
+
         if (cause != null) {
-            if (cause instanceof EntityDamageByEntityEvent) {
-                EntityDamageByEntityEvent ev = (EntityDamageByEntityEvent) cause;
-                Entity damager = ev.getDamager();
-
-                // 1. Muerte por JUGADOR (PvP Directo)
-                if (damager instanceof Player) {
-                    msgKey = "pvp";
-                    killerName = damager.getName();
-                    Item item = ((Player) damager).getInventory().getItemInHand();
-                    itemName = (item != null && item.getId() != 0) ? item.getName() : "sus manos";
-                } 
-                // 2. Muerte por CRISTAL (End Crystal)
-                else if (damager instanceof EntityEndCrystal) {
-                    msgKey = "crystal";
-                    // Intentamos ver si alguien golpeó al jugador recientemente
-                    if (isValidAttacker(player.getName())) {
-                        killerName = lastAttacker.get(player.getName());
+            switch (cause) {
+                case FALL:
+                    message = (damager instanceof Player && !damager.equals(victim)) 
+                        ? selectedConfig.getString("FALL_BY_PLAYER", selectedConfig.getString("FALL"))
+                        : selectedConfig.getString("FALL");
+                    break;
+                case FIRE:
+                case FIRE_TICK:
+                case LAVA:
+                    message = (damager instanceof Player && !damager.equals(victim))
+                        ? selectedConfig.getString("FIRE_TICK_BY_PLAYER", selectedConfig.getString("FIRE"))
+                        : selectedConfig.getString("FIRE");
+                    break;
+                case DROWNING:
+                    message = (damager instanceof Player && !damager.equals(victim))
+                        ? selectedConfig.getString("DROWNING_BY_PLAYER", selectedConfig.getString("DROWNING"))
+                        : selectedConfig.getString("DROWNING");
+                    break;
+                case BLOCK_EXPLOSION:
+                    message = (damager instanceof Player)
+                        ? selectedConfig.getString("BLOCK_EXPLOSION_BY_PLAYER", selectedConfig.getString("BLOCK_EXPLOSION"))
+                        : selectedConfig.getString("BLOCK_EXPLOSION");
+                    break;
+                case ENTITY_EXPLOSION:
+                    boolean isCrystal = (damager instanceof EntityEndCrystal) || 
+                                        (damager != null && damager.getName().toLowerCase().contains("crystal"));
+                    if (isCrystal) {
+                        Entity prev = lastDamager.get(victimName);
+                        if (prev instanceof Player) attackerName = prev.getName();
+                        message = selectedConfig.getString("ENTITY_EXPLOSION_ENDER_CRYSTAL", selectedConfig.getString("ENTITY_EXPLOSION"));
                     } else {
-                        // Si nadie lo golpeó, el asesino es el propio cristal
-                        killerName = "End Crystal";
-                        msgKey = "explosion"; // Fallback a explosión genérica
+                        message = selectedConfig.getString("ENTITY_EXPLOSION");
                     }
-                }
-                // 3. Muerte por TNT
-                else if (damager instanceof EntityPrimedTNT) {
-                    msgKey = "explosion";
-                    killerName = "TNT";
-                }
-                // 4. Muerte por CREEPER
-                else if (damager instanceof EntityCreeper) {
-                    msgKey = "explosion";
-                    killerName = "Creeper";
-                }
-                // 5. Muerte por OTROS MOBS
-                else {
-                    msgKey = "pvp"; // Usamos mensaje genérico de asesinato
-                    killerName = damager.getName();
-                    itemName = "fuerza bruta";
-                }
-            } 
-            // Causas ambientales
-            else {
-                switch (cause.getCause()) {
-                    case FALL:
-                        if (isValidAttacker(player.getName())) {
-                            msgKey = "fall_pvp";
-                            killerName = lastAttacker.get(player.getName());
-                        } else {
-                            msgKey = "fall";
-                        }
-                        break;
-                    case LAVA:
-                    case FIRE:
-                    case FIRE_TICK:
-                        msgKey = "fire";
-                        break;
-                    case ENTITY_EXPLOSION: // A veces TNT/Creeper cae aquí sin damager directo
-                    case BLOCK_EXPLOSION:
-                        msgKey = "explosion";
-                        killerName = "Explosión";
-                        break;
-                    case VOID:
-                        if (isValidAttacker(player.getName())) {
-                            msgKey = "fall_pvp"; // Empujado al vacío
-                            killerName = lastAttacker.get(player.getName());
-                        } else {
-                            msgKey = "fall";
-                        }
-                        break;
-                }
+                    break;
+                case ENTITY_ATTACK:
+                    message = (damager instanceof Player) ? selectedConfig.getString("KILL_BY_WEAPON") : selectedConfig.getString("MOB_ATTACK");
+                    break;
+                case PROJECTILE:
+                    message = selectedConfig.getString("PROJECTILE");
+                    break;
+                case VOID:
+                    message = selectedConfig.getString("VOID");
+                    break;
+                case SUICIDE:
+                    message = selectedConfig.getString("SUICIDE");
+                    break;
+                default:
+                    if (selectedConfig.exists(cause.name())) message = selectedConfig.getString(cause.name());
+                    break;
             }
         }
-
-        // Obtener lista de mensajes y elegir uno aleatorio
-        List<String> messages = messagesConfig.getStringList(msgKey);
-        if (messages == null || messages.isEmpty()) {
-            messages = messagesConfig.getStringList("unknown");
-        }
-
-        String randomMsg = messages.get(random.nextInt(messages.size()));
-
-        // Reemplazar variables
-        randomMsg = randomMsg.replace("{player}", player.getName())
-                             .replace("{killer}", killerName)
-                             .replace("{item}", itemName);
-
-        // Establecer mensaje final con colores
-        event.setDeathMessage(TextFormat.colorize(randomMsg));
         
-        // Limpiar caché de atacante
-        lastAttacker.remove(player.getName());
-    }
-
-    // Verifica si el atacante es válido (si el golpe fue hace menos de 15 segundos)
-    private boolean isValidAttacker(String playerName) {
-        if (!lastAttacker.containsKey(playerName)) return false;
-        long timeDiff = System.currentTimeMillis() - lastAttackTime.getOrDefault(playerName, 0L);
-        return timeDiff < 15000; // 15 segundos de memoria
+        if (message == null) message = "<Player> died";
+        
+        message = message.replace("<Player>", victimName)
+                         .replace("<Attacker>", (attackerName != null ? attackerName : "Unknown"))
+                         .replace("<WeaponName>", weaponName);
+        
+        event.setDeathMessage(TextFormat.colorize(message));
+        lastDamager.remove(victimName);
     }
 }
