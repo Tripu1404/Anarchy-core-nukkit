@@ -3,7 +3,6 @@ package com.tripu1404.anarchycore;
 import cn.nukkit.Player;
 import cn.nukkit.block.Block;
 import cn.nukkit.block.BlockID;
-// CORREGIDO: Importamos BlockEntity en lugar de EntityItemFrame
 import cn.nukkit.blockentity.BlockEntity;
 import cn.nukkit.blockentity.BlockEntityItemFrame;
 import cn.nukkit.event.EventHandler;
@@ -97,27 +96,30 @@ public class AnarchyCore extends PluginBase implements Listener {
     }
 
     private void loadIllegalIds() {
-        illegalIds.add(BlockID.BEDROCK);
-        illegalIds.add(BlockID.WATER);
-        illegalIds.add(BlockID.STILL_WATER);
-        illegalIds.add(BlockID.LAVA);
-        illegalIds.add(BlockID.STILL_LAVA);
-        illegalIds.add(26); 
-        illegalIds.add(BlockID.FIRE);
-        illegalIds.add(BlockID.MONSTER_SPAWNER);
-        illegalIds.add(BlockID.INVISIBLE_BEDROCK);
-        illegalIds.add(BlockID.BARRIER);
-        illegalIds.add(BlockID.PORTAL);
-        illegalIds.add(BlockID.END_PORTAL);
-        illegalIds.add(BlockID.END_PORTAL_FRAME);
-        illegalIds.add(BlockID.COMMAND_BLOCK);
-        illegalIds.add(BlockID.REPEATING_COMMAND_BLOCK);
-        illegalIds.add(BlockID.CHAIN_COMMAND_BLOCK);
-        illegalIds.add(BlockID.ALLOW);
-        illegalIds.add(BlockID.DENY);
-        illegalIds.add(BlockID.BORDER_BLOCK);
-        illegalIds.add(665); 
-        illegalIds.add(-60); 
+        // Usamos IDs numéricos para evitar errores de compilación si cambia la API
+        illegalIds.add(BlockID.BEDROCK); // 7
+        illegalIds.add(BlockID.WATER); // 8
+        illegalIds.add(BlockID.STILL_WATER); // 9
+        illegalIds.add(BlockID.LAVA); // 10
+        illegalIds.add(BlockID.STILL_LAVA); // 11
+        illegalIds.add(26); // Bed Block
+        illegalIds.add(BlockID.FIRE); // 51
+        illegalIds.add(BlockID.MONSTER_SPAWNER); // 52
+        illegalIds.add(95); // Invisible Bedrock (antes BlockID.INVISIBLE_BEDROCK)
+        illegalIds.add(90); // Nether Portal (antes BlockID.PORTAL)
+        illegalIds.add(119); // End Portal (antes BlockID.END_PORTAL)
+        illegalIds.add(120); // End Portal Frame (antes BlockID.END_PORTAL_FRAME)
+        illegalIds.add(BlockID.COMMAND_BLOCK); // 137
+        illegalIds.add(BlockID.REPEATING_COMMAND_BLOCK); // 188
+        illegalIds.add(BlockID.CHAIN_COMMAND_BLOCK); // 189
+        illegalIds.add(BlockID.ALLOW); // 210
+        illegalIds.add(BlockID.DENY); // 211
+        illegalIds.add(BlockID.BORDER_BLOCK); // 212
+        illegalIds.add(BlockID.BARRIER); // Variable
+        
+        // IDs manuales extra
+        illegalIds.add(665); // Soul Fire
+        illegalIds.add(-60); // Reinforced Deepslate
     }
 
     // =========================================================
@@ -169,7 +171,8 @@ public class AnarchyCore extends PluginBase implements Listener {
         if (antiBurrowEnabled && !sameBlock) {
             Block block = player.getLevel().getBlock(player.getPosition());
             
-            if (block.getId() == BlockID.ENDER_CHEST) {
+            // Usamos ID 130 para Ender Chest por seguridad
+            if (block.getId() == 130) {
                 AxisAlignedBB playerBB = player.getBoundingBox();
                 AxisAlignedBB blockBB = block.getBoundingBox();
 
@@ -233,8 +236,7 @@ public class AnarchyCore extends PluginBase implements Listener {
 
     @EventHandler
     public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
-        // CORREGIDO: Eliminamos Frame Dupe de aquí porque el marco no es Entidad.
-        // Solo dejamos Anti-32k para PvP.
+        // PvP Anti-32k
         if (event.getDamager() instanceof Player) {
             Player player = (Player) event.getDamager();
             if (cleanInventory(player)) {
@@ -256,21 +258,18 @@ public class AnarchyCore extends PluginBase implements Listener {
             return; 
         }
 
-        // 2. FRAME DUPE (CORREGIDO: Ahora detectamos el bloque Item Frame)
-        // Detectamos CLICK IZQUIERDO (Golpear/Romper) en un Bloque Item Frame
+        // 2. FRAME DUPE (Bloque Item Frame = ID 199)
         if (event.getAction() == PlayerInteractEvent.Action.LEFT_CLICK_BLOCK) {
             Block block = event.getBlock();
-            // ID 199 es Item Frame Block
-            if (block.getId() == BlockID.ITEM_FRAME_BLOCK) {
+            // Usamos 199 directamente para evitar errores de compilación con BlockID
+            if (block.getId() == 199) {
                 BlockEntity tile = block.getLevel().getBlockEntity(block);
                 if (tile instanceof BlockEntityItemFrame) {
                     BlockEntityItemFrame frame = (BlockEntityItemFrame) tile;
                     Item itemInFrame = frame.getItem();
                     
                     if (itemInFrame != null && itemInFrame.getId() != 0) {
-                        // Probabilidad
                         if ((random.nextInt(100) + 1) <= frameDupeChance) {
-                            // Soltamos el duplicado
                             block.getLevel().dropItem(block.add(0.5, 0.5, 0.5), itemInFrame.clone());
                         }
                     }
@@ -278,9 +277,10 @@ public class AnarchyCore extends PluginBase implements Listener {
             }
         }
 
-        // 3. BED DUPE (Click Derecho en Cama)
+        // 3. BED DUPE (Cama = ID 26)
         if (bedDupeEnabled && event.getAction() == PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK) {
-            if (event.getBlock().getId() == BlockID.BED_BLOCK) {
+            // Usamos 26 directamente
+            if (event.getBlock().getId() == 26) {
                 if (itemInHand.getId() != 0) {
                     if ((random.nextInt(100) + 1) <= bedDupeChance) {
                         player.getLevel().dropItem(player.getPosition(), itemInHand.clone());
@@ -362,32 +362,4 @@ public class AnarchyCore extends PluginBase implements Listener {
     }
 
     private Item validateItem(Item item) {
-        if (item == null || item.getId() == 0) return item;
-
-        if (antiIllegalEnabled && isItemIllegal(item)) {
-            return Item.get(0); 
-        }
-
-        if (anti32kEnabled && item.hasEnchantments()) {
-            boolean enchantsChanged = false;
-            Item clonedItem = item.clone();
-            
-            for (Enchantment enchantment : clonedItem.getEnchantments()) {
-                int maxLevel = enchantment.getMaxLevel();
-                if (enchantment.getLevel() > maxLevel) {
-                    enchantment.setLevel(maxLevel, true);
-                    clonedItem.addEnchantment(enchantment);
-                    enchantsChanged = true;
-                }
-            }
-            if (enchantsChanged) return clonedItem;
-        }
-        return item;
-    }
-
-    private boolean isItemIllegal(Item item) {
-        if (illegalIds.contains(item.getId())) return true;
-        String name = item.getName().toLowerCase();
-        return name.contains("reinforced deepslate") || name.contains("soul fire");
-    }
-}
+        if (item == null || item.getId()
