@@ -3,7 +3,7 @@ main: com.tripu1404.anarchycore.AnarchyCore
 version: 1.0.0
 api: ["1.0.13"]
 author: tripu1404
-description: Core completo para Anarchy (Dupes, Anti-32k, Anti-Illegal, Anti-Burrow, Elytra Limiter)
+description: Anarchy core for nukkit
 permissions:
    anarchy.admin:
       description: "Permiso de administrador para el core"
