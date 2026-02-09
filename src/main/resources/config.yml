@@ -1,3 +1,8 @@
+# ----------------------------------------------------------------
+#                ANARCHY CORE - CONFIGURATION
+#                     Author: tripu1404
+# ----------------------------------------------------------------
+
 # --- Frame Dupe ---
 # Probabilidad de duplicar al golpear un Item Frame (0 - 100)
 frame-dupe-chance: 40
@@ -8,30 +13,37 @@ bed-dupe-enabled: true
 # Probabilidad de duplicar al hacer click en una cama (0 - 100)
 bed-dupe-chance: 50
 
-# --- Anti-32k (Enchants) ---
-# Revierte encantamientos ilegales al nivel máximo vanilla.
-# Se revisa al entrar, al cambiar de mano, al interactuar y al atacar.
-anti-32k-enabled: true
-
 # --- Anti-Illegal (Blocks) ---
-# Borra items ilegales (Bedrock, Barriers, Spawners, etc.) del inventario.
-# Se borran al entrar, al intentar colocarlos, al tirarlos o usarlos.
+# Borra items ilegales (Bedrock, Barriers, Spawners, Portales, etc.) del inventario.
+# Se borran al entrar, al intentar colocarlos, al tirarlos o al cambiar de mano.
 anti-illegal-enabled: true
 
-# --- Anti-Burrow (Ender Chest) ---
-anti-burow-enabled: true
+# --- Random Spawn (RTP) ---
+# Teletransporta aleatoriamente a los jugadores al respawnear en el mundo normal.
+# NOTA: Respeta las camas y nexos de reaparición (si tienes cama, no te hace RTP).
+rtp-enabled: true
+rtp-radius: 1000   # Radio en bloques desde el centro (0,0)
+rtp-world: "world" # Nombre del mundo donde ocurre el RTP (usualmente "world")
 
 # --- Anti-Elytra (TPS Lag Protection) ---
+# Desactiva las elytras si el servidor tiene lag (Bajo TPS).
 anti-elytra-enabled: true
-# Límite de TPS. Si baja de esto, nadie puede volar.
+# Límite de TPS. Si el servidor baja de esto (ej. 15.0), nadie puede volar.
 anti-elytra-tps-limit: 15.0
-# Evita daño por caída si el plugin te quitó las elytras en el aire.
+# Evita daño por caída si el plugin te quitó las elytras en el aire por lag.
 anti-elytra-safe-fall: true
 
-# --- Elytra Speed Limit ---
+# --- Elytra Speed & HUD ---
+# Límite de velocidad (Bloques por tick).
+# Vanilla con cohetes suele ser aprox 3.0 - 4.0.
 elytra-speed-limit: 3.5
 
+# Mostrar HUD (Action Bar) con velocidad al volar (Ej: "Velocidad: 120 km/h / 250 km/h")
+elytra-hud-enabled: true
+
 # --- Custom Messages ---
+# Mensajes aleatorios de entrada y salida.
+# Usa & para colores y {player} para el nombre del jugador.
 custom-messages-enabled: true
 
 join-messages:
