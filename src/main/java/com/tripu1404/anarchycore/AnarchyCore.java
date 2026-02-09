@@ -3,7 +3,6 @@ package com.tripu1404.anarchycore;
 import cn.nukkit.Player;
 import cn.nukkit.block.Block;
 import cn.nukkit.block.BlockID;
-// CORREGIDO: Importamos BlockEntity en lugar de EntityItemFrame
 import cn.nukkit.blockentity.BlockEntity;
 import cn.nukkit.blockentity.BlockEntityItemFrame;
 import cn.nukkit.event.EventHandler;
@@ -107,7 +106,10 @@ public class AnarchyCore extends PluginBase implements Listener {
         illegalIds.add(BlockID.MONSTER_SPAWNER);
         illegalIds.add(BlockID.INVISIBLE_BEDROCK);
         illegalIds.add(BlockID.BARRIER);
-        illegalIds.add(BlockID.PORTAL);
+        
+        // CORREGIDO: Usamos el ID 90 directamente en lugar de BlockID.PORTAL
+        illegalIds.add(90); // Nether Portal Block
+        
         illegalIds.add(BlockID.END_PORTAL);
         illegalIds.add(BlockID.END_PORTAL_FRAME);
         illegalIds.add(BlockID.COMMAND_BLOCK);
@@ -233,8 +235,7 @@ public class AnarchyCore extends PluginBase implements Listener {
 
     @EventHandler
     public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
-        // CORREGIDO: Eliminamos Frame Dupe de aquí porque el marco no es Entidad.
-        // Solo dejamos Anti-32k para PvP.
+        // Anti-32k para PvP
         if (event.getDamager() instanceof Player) {
             Player player = (Player) event.getDamager();
             if (cleanInventory(player)) {
@@ -256,12 +257,12 @@ public class AnarchyCore extends PluginBase implements Listener {
             return; 
         }
 
-        // 2. FRAME DUPE (CORREGIDO: Ahora detectamos el bloque Item Frame)
+        // 2. FRAME DUPE (Bloque Item Frame)
         // Detectamos CLICK IZQUIERDO (Golpear/Romper) en un Bloque Item Frame
         if (event.getAction() == PlayerInteractEvent.Action.LEFT_CLICK_BLOCK) {
             Block block = event.getBlock();
-            // ID 199 es Item Frame Block
-            if (block.getId() == BlockID.ITEM_FRAME_BLOCK) {
+            // CORREGIDO: Usamos ID 199 directamente (Item Frame Block) para evitar errores de constantes faltantes.
+            if (block.getId() == 199) { 
                 BlockEntity tile = block.getLevel().getBlockEntity(block);
                 if (tile instanceof BlockEntityItemFrame) {
                     BlockEntityItemFrame frame = (BlockEntityItemFrame) tile;
